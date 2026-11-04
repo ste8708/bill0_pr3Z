@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 # --- CONFIGURAZIONE PRODOTTO ---
 URL = "https://www.amazon.it/gp/product/B0GHNB78F7/ref=ox_sc_act_title_1?smid=AR03I86151UAC&psc=1"  # 1. Incolla qui il link del prodotto
 SELETTORE_CSS = "#corePriceDisplay_desktop_feature_div .a-price-whole"               # 2. Incolla qui il Selettore CSS copiato
-PREZZO_OBIETTIVO = 18                    # 3. Sotto questa cifra (in Euro) parte l'avviso
+PREZZO_OBIETTIVO = 100                    # 3. Sotto questa cifra (in Euro) parte l'avviso
 
 # Legge il nome del tuo canale segreto dalla cassaforte di GitHub
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
