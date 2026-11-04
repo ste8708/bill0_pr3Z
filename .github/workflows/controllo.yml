@@ -1,11 +1,10 @@
-YAML
 name: Controllo Prezzi Automatico
 
 on:
   schedule:
     # Gira al minuto 15 ogni 4 ore (es. 00:15, 04:15, 08:15, 12:15...)
     - cron: '15 */4 * * *'
-  # Permette anche di far partire un test manuale con un clic
+  # Permette di far partire un test manuale con il tasto "Run workflow"
   workflow_dispatch:
 
 jobs:
@@ -25,6 +24,5 @@ jobs:
 
       - name: Esegui lo script di controllo
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python scraper.py
