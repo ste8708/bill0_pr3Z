@@ -8,17 +8,34 @@ URL = "https://www.amazon.it/gp/product/B0GHNB78F7/ref=ox_sc_act_title_1?smid=AR
 SELETTORE_CSS = ".price#corePriceDisplay_desktop_feature_div > div > div.a-section.a-spacing-none.aok-align-center.aok-relative > span.a-price.aok-align-center.reinventPricePriceToPayMargin.priceToPay.apex-pricetopay-value > span:nth-child(2) > span.a-price-whole-value"               # 2. Incolla qui il Selettore CSS copiato
 PREZZO_OBIETTIVO = 18                    # 3. Sotto questa cifra (in Euro) parte l'avviso
 
-# Chiavi lette in automatico dalla cassaforte di GitHub
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# Legge il nome del tuo canale segreto dalla cassaforte di GitHub
+NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 
-def invia_telegram(messaggio):
-    url_api = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": messaggio, "parse_mode": "Markdown"}
-    requests.post(url_api, json=payload, timeout=10)
+def invia_ntfy(prezzo_attuale):
+    if not NTFY_TOPIC:
+        print("Errore: il secret NTFY_TOPIC non è configurato su GitHub!")
+        return
+
+    messaggio = (
+        f"Il prodotto è sceso a {prezzo_attuale:.2f} € "
+        f"(il tuo obiettivo era {PREZZO_OBIETTIVO:.2f} €).\n"
+        f"Tocca questa notifica per aprire subito il sito!"
+    )
+
+    # Invio della notifica push tramite ntfy.sh
+    requests.post(
+        f"https://ntfy.sh/{NTFY_TOPIC}",
+        data=messaggio.encode("utf-8"),
+        headers={
+            "Title": f"Prezzo sceso a {prezzo_attuale:.2f} EUR!",
+            "Priority": "high",
+            "Tags": "fire,shopping_cart",  # ntfy li trasforma nelle icone 🔥 e 🛒
+            "Click": URL                   # Rende la notifica cliccabile
+        },
+        timeout=10
+    )
 
 def controlla_prezzo():
-    # Ci fingiamo un normale browser su Windows 11 per evitare blocchi banali
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
@@ -37,7 +54,7 @@ def controlla_prezzo():
     testo_grezzo = elemento_prezzo.get_text().strip()
     print(f"Testo letto sulla pagina: {testo_grezzo}")
     
-    # Pulizia: es. da "1.249,90 €" -> toglie il punto delle migliaia, mette il punto per i decimali -> 1249.90
+    # Pulizia: rimuove il punto delle migliaia e converte la virgola decimale in punto
     testo_pulito = testo_grezzo.replace(".", "").replace(",", ".")
     numeri = re.findall(r"\d+\.?\d*", testo_pulito)
     
@@ -49,14 +66,8 @@ def controlla_prezzo():
     print(f"Prezzo convertito: {prezzo_attuale} € (Obiettivo: {PREZZO_OBIETTIVO} €)")
     
     if prezzo_attuale <= PREZZO_OBIETTIVO:
-        msg = (
-            f"🔥 *PREZZO SCESO!*\n\n"
-            f"Prezzo attuale: *{prezzo_attuale:.2f} €*\n"
-            f"Soglia impostata: {PREZZO_OBIETTIVO:.2f} €\n\n"
-            f"[Vai alla pagina del prodotto]({URL})"
-        )
-        invia_telegram(msg)
-        print("Notifica inviata su Telegram!")
+        invia_ntfy(prezzo_attuale)
+        print("Notifica inviata con successo tramite ntfy!")
     else:
         print("Prezzo ancora sopra la soglia. Nessuna notifica.")
 
