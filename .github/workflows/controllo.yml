@@ -1,0 +1,30 @@
+YAML
+name: Controllo Prezzi Automatico
+
+on:
+  schedule:
+    # Gira al minuto 15 ogni 4 ore (es. 00:15, 04:15, 08:15, 12:15...)
+    - cron: '15 */4 * * *'
+  # Permette anche di far partire un test manuale con un clic
+  workflow_dispatch:
+
+jobs:
+  check-price:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il codice del bot
+        uses: actions/checkout@v4
+
+      - name: Prepara Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installa librerie web
+        run: pip install requests beautifulsoup4
+
+      - name: Esegui lo script di controllo
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scraper.py
