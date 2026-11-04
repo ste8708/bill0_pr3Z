@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 # --- CONFIGURAZIONE PRODOTTO ---
 URL = "https://www.amazon.it/gp/product/B0GHNB78F7/ref=ox_sc_act_title_1?smid=AR03I86151UAC&psc=1"  # 1. Incolla qui il link del prodotto
-SELETTORE_CSS = ".price#corePriceDisplay_desktop_feature_div > div > div.a-section.a-spacing-none.aok-align-center.aok-relative > span.a-price.aok-align-center.reinventPricePriceToPayMargin.priceToPay.apex-pricetopay-value > span:nth-child(2) > span.a-price-whole-value"               # 2. Incolla qui il Selettore CSS copiato
+SELETTORE_CSS = "#corePriceDisplay_desktop_feature_div .a-price-whole"               # 2. Incolla qui il Selettore CSS copiato
 PREZZO_OBIETTIVO = 18                    # 3. Sotto questa cifra (in Euro) parte l'avviso
 
 # Legge il nome del tuo canale segreto dalla cassaforte di GitHub
