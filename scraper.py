@@ -5,11 +5,9 @@ from bs4 import BeautifulSoup
 
 # --- CONFIGURAZIONE PRODOTTO ---
 URL = "https://www.amazon.it/gp/product/B0GHNB78F7"  # 1. Incolla qui il link del sensore ThirdReality
-PREZZO_OBIETTIVO = 999.00                             # 2. Lascia pure 999 per fare il test del prezzo italiano!
-CAP_ITALIANO = "28010"                                # 3. Il CAP italiano da simulare
+PREZZO_OBIETTIVO = 999.00                             # 2. Lascia 999 per il test, poi metti la tua soglia (es. 17.00)
 
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
-# Opzionale: se hai salvato i cookie nei Secrets di GitHub, li usa
 AMAZON_COOKIE = os.environ.get("AMAZON_COOKIE")
 
 def invia_ntfy(titolo, messaggio):
@@ -27,64 +25,54 @@ def invia_ntfy(titolo, messaggio):
         timeout=10
     )
 
-def imposta_posizione_italia(sessione):
-    """Simula il clic su 'Invia a: CAP 28010 (Italia)' su Amazon.it"""
-    # 1. Visita rapida alla home per ricevere il cookie di sessione italiano (session-id) e il token CSRF
-    home = sessione.get("https://www.amazon.it/", timeout=15)
-    
-    # Estrae il token anti-CSRF necessario per cambiare il CAP
-    csrf_match = re.search(r'anti-csrftoken-a2z"\s+value="([^"]+)"', home.text)
-    if not csrf_match:
-        csrf_match = re.search(r'csrfToken"\s*:\s*"([^"]+)"', home.text)
-        
-    headers_ajax = {
-        "Accept": "text/html,*/*",
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://www.amazon.it/",
-    }
-    if csrf_match:
-        headers_ajax["anti-csrftoken-a2z"] = csrf_match.group(1)
-
-    payload = {
-        "locationType": "LOCATION_INPUT",
-        "zipCode": CAP_ITALIANO,
-        "storeContext": "generic",
-        "deviceType": "web",
-        "pageType": "Gateway",
-        "actionSource": "glow"
-    }
-    
-    # 2. Invia il CAP italiano ad Amazon (ora i cookie della sessione sono localizzati in Italia!)
-    r = sessione.post(
-        "https://www.amazon.it/portal-migration/hz/glow/address-change?actionSource=glow",
-        data=payload,
-        headers=headers_ajax,
-        timeout=15
-    )
-    print(f"Cambio località sul CAP {CAP_ITALIANO}: HTTP {r.status_code}")
+def pulisci_prezzo(testo):
+    """Trasforma stringhe come '19,99 €' o '19\n,99' in un numero float 19.99"""
+    testo_compatto = "".join(testo.split()).replace("€", "").replace(".", "").replace(",", ".")
+    numeri = re.findall(r"\d+\.\d+|\d+", testo_compatto)
+    return float(numeri[0]) if numeri else None
 
 def estrai_prezzo_amazon(pagina):
-    # Cerchiamo ESCLUSIVAMENTE nel riquadro principale del prodotto (evitando i prodotti sponsorizzati a fondo pagina!)
-    selettori_principali = [
-        "#corePriceDisplay_desktop_feature_div .priceToPay .a-price-whole",
-        "#corePrice_feature_div .a-price-whole",
-        "#apex_desktop .a-price-whole",
-        "#centerCol .a-price-whole"
+    # 1. Cerchiamo prima nei selettori esatti del prezzo di acquisto (Colonna Centrale + BuyBox di Destra)
+    selettori_acquisto = [
+        "span.priceToPay span.a-offscreen",
+        "span.priceToPay",
+        "#corePriceDisplay_desktop_feature_div .a-price",
+        "#corePrice_feature_div .a-price",
+        "#desktop_buybox .a-price",
+        "#buybox .a-price",
+        "#apex_desktop .a-price"
     ]
     
-    for sel in selettori_principali:
-        el_intero = pagina.select_one(sel)
-        if el_intero and el_intero.get_text().strip():
-            intero = re.sub(r"[^\d]", "", el_intero.get_text())
-            genitore = el_intero.find_parent(class_="a-price")
-            el_centesimi = genitore.select_one(".a-price-fraction") if genitore else None
-            centesimi = re.sub(r"[^\d]", "", el_centesimi.get_text()) if el_centesimi else "00"
-            
+    for sel in selettori_acquisto:
+        elementi = pagina.select(sel)
+        for el in elementi:
+            # Se dentro c'è a-price-whole + a-price-fraction, li uniamo con precisione
+            intero = el.select_one(".a-price-whole")
+            frazione = el.select_one(".a-price-fraction")
             if intero:
-                prezzo = float(f"{intero}.{centesimi}")
-                print(f"✅ Trovato nel box principale con '{sel}': {prezzo:.2f} €")
+                int_str = re.sub(r"[^\d]", "", intero.get_text())
+                fraz_str = re.sub(r"[^\d]", "", frazione.get_text()) if frazione else "00"
+                if int_str:
+                    prezzo = float(f"{int_str}.{fraz_str}")
+                    print(f"✅ Prezzo trovato con '{sel}': {prezzo:.2f} €")
+                    return prezzo
+            
+            # Altrimenti leggiamo il testo diretto (es. da .a-offscreen)
+            prezzo = pulisci_prezzo(el.get_text())
+            if prezzo:
+                print(f"✅ Prezzo trovato con '{sel}': {prezzo:.2f} €")
                 return prezzo
+
+    # 2. Se ancora non lo vede, controlliamo tutti i prezzi sulla pagina escludendo i caroselli pubblicitari
+    for el in pagina.select(".a-price"):
+        # Ignora i prezzi che si trovano dentro i caroselli "Prodotti sponsorizzati" o "Spesso comprati insieme"
+        if el.find_parent(class_=re.compile(r"carousel|sims|sp_detail")):
+            continue
+        prezzo = pulisci_prezzo(el.get_text())
+        if prezzo:
+            print(f"✅ Prezzo trovato con scansione generale: {prezzo:.2f} €")
+            return prezzo
+
     return None
 
 def controlla_prezzo():
@@ -92,19 +80,16 @@ def controlla_prezzo():
     sessione.headers.update({
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "it-IT,it;q=0.9",
+        "Referer": "https://www.google.it/",
     })
     
     if AMAZON_COOKIE:
         print("Uso il cookie italiano pre-salvato...")
         sessione.headers.update({"Cookie": AMAZON_COOKIE})
-    else:
-        print("Imposto automaticamente il CAP italiano nella sessione...")
-        imposta_posizione_italia(sessione)
 
     risposta = sessione.get(URL, timeout=20)
     pagina = BeautifulSoup(risposta.text, "html.parser")
     
-    # Stampiamo nel log quale località vede Amazon in alto a sinistra!
     loc_el = pagina.select_one("#glow-ingress-line2")
     localita_vista = loc_el.get_text().strip() if loc_el else "Non rilevata"
     print(f"📍 Località vista da Amazon: '{localita_vista}'")
@@ -112,7 +97,14 @@ def controlla_prezzo():
     prezzo_attuale = estrai_prezzo_amazon(pagina)
     
     if prezzo_attuale is None:
-        print("❌ Prezzo non trovato nel box principale. Probabilmente Amazon richiede il cookie di sessione.")
+        print("❌ Prezzo ancora non trovato.")
+        # Diagnostica: ci mostra cosa c'è scritto nel box di destra (BuyBox)
+        buybox = pagina.select_one("#buybox") or pagina.select_one("#rightCol")
+        if buybox:
+            testo_buybox = " ".join(buybox.get_text().split())[:200]
+            print(f"Contenuto visto nella colonna di acquisto: '{testo_buybox}...'")
+        tutti = [p.get_text().strip() for p in pagina.select(".a-price")[:6]]
+        print(f"Tutti i tag .a-price presenti: {tutti}")
         return
 
     print(f"💰 Prezzo rilevato: {prezzo_attuale:.2f} € (Obiettivo: {PREZZO_OBIETTIVO:.2f} €)")
@@ -120,8 +112,11 @@ def controlla_prezzo():
     if prezzo_attuale <= PREZZO_OBIETTIVO:
         invia_ntfy(
             f"Prezzo: {prezzo_attuale:.2f} EUR!",
-            f"Sensore ThirdReality a {prezzo_attuale:.2f} € (Località: {localita_vista}).\nTocca per aprire Amazon!"
+            f"Sensore ThirdReality a {prezzo_attuale:.2f} € (CAP: {localita_vista}).\nTocca per aprire Amazon!"
         )
+        print("Notifica inviata con successo!")
+    else:
+        print("Prezzo sopra la soglia. Nessuna notifica.")
 
 if __name__ == "__main__":
     controlla_prezzo()
