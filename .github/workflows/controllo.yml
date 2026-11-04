@@ -25,4 +25,5 @@ jobs:
       - name: Esegui lo script di controllo
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          AMAZON_COOKIE: ${{ secrets.AMAZON_COOKIE }}
         run: python scraper.py
