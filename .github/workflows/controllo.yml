@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
 
       - name: Installa librerie web
-        run: pip install requests beautifulsoup4
+        run: pip install curl_cffi beautifulsoup4
 
       - name: Esegui lo script di controllo
         env:
